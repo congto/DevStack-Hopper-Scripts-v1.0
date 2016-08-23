@@ -1,0 +1,81 @@
+#!/bin/bash
+
+:<<'hopper-stack-notice'
+
+Copyright 2016 Hopper-Stack
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+hopper-stack-notice
+
+# +------------------------------------------+
+# | VARIABLES                                |
+# +------------------------------------------+
+source variables
+
+# keypair
+source openrc demo demo
+mkdir .ssh
+chmod 700 .ssh
+echo ".ssh/id_rsa" > /tmp/yes
+sudo ssh-keygen -q -N "" < /tmp/yes
+echo
+nova keypair-add --pub-key .ssh/id_rsa.pub demokey
+sleep 1
+rm -rf /tmp/yes
+nova keypair-list
+sleep 1
+
+# security group
+source openrc demo demo
+nova secgroup-create testgrp "Test Group"
+sleep 1
+nova secgroup-add-rule testgrp icmp -1 -1 0.0.0.0/0
+sleep 1
+nova secgroup-add-rule testgrp tcp 22 22 0.0.0.0/0
+sleep 1
+nova secgroup-add-rule testgrp tcp 80 80 0.0.0.0/0
+sleep 1
+nova secgroup-add-rule testgrp tcp 3389 3389 0.0.0.0/0
+sleep 1
+nova flavor-list
+sleep 1
+
+# launch instance
+source openrc demo demo
+FLV=`nova flavor-list | grep m1.tiny | awk '{print $4}' | head -1`
+sleep 1
+IMG=`nova image-list | grep ACTIVE | awk '{print $4}' | head -1`
+sleep 1
+NET=`neutron net-list | grep private | awk '{print $2}' | head -1`
+
+nova boot --flavor $FLV --image $IMG --nic net-id=$NET \
+--security-group testgrp --key-name demokey testserver
+sleep 1
+
+nova list
+sleep 1
+
+neutron floatingip-create public > /tmp/fp.list
+cat /tmp/fp.list
+FIP=`cat /tmp/fp.list | grep floating_ip_address | awk '{print $4}'`
+rm -f /tmp/fp.list
+echo "waiting ..."
+nova floating-ip-associate testserver $FIP > /dev/null 2>&1
+
+source openrc demo demo
+echo "Console access:"
+sleep 10
+nova get-vnc-console testserver novnc
+echo
+
